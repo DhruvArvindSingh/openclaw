@@ -37,6 +37,66 @@ const OPENAI_CODEX_GPT53_MODEL_ID = "gpt-5.3-codex";
 const OPENAI_CODEX_GPT53_SPARK_MODEL_ID = "gpt-5.3-codex-spark";
 const NON_PI_NATIVE_MODEL_PROVIDERS = new Set(["kilocode"]);
 
+// Forward-compat catalog entries for the google-antigravity provider.
+// These clone an existing template catalog entry under a new model id so that
+// the model appears in the allowlist computed by buildAllowedModelSet.
+// Rules are inlined here (instead of imported from model-forward-compat.ts)
+// to avoid a circular dependency chain:
+//   model-catalog → model-forward-compat → model-selection → model-catalog
+const ANTIGRAVITY_FORWARD_COMPAT_CATALOG_RULES: ReadonlyArray<{
+  provider: string;
+  id: string;
+  templateId: string;
+}> = [
+  // Opus 4.6
+  { provider: "google-antigravity", id: "claude-opus-4-6", templateId: "claude-opus-4-5" },
+  {
+    provider: "google-antigravity",
+    id: "claude-opus-4-6-thinking",
+    templateId: "claude-opus-4-5-thinking",
+  },
+  // Sonnet 4.6
+  { provider: "google-antigravity", id: "claude-sonnet-4-6", templateId: "claude-sonnet-4-5" },
+  {
+    provider: "google-antigravity",
+    id: "claude-sonnet-4-6-thinking",
+    templateId: "claude-sonnet-4-5-thinking",
+  },
+  // Gemini 3.1 Pro (dot notation — the API-accepted format)
+  { provider: "google-antigravity", id: "gemini-3.1-pro-high", templateId: "gemini-3-pro-high" },
+  { provider: "google-antigravity", id: "gemini-3.1-pro-low", templateId: "gemini-3-pro-low" },
+  // Gemini 3.1 Pro (dash notation — alias for user convenience)
+  { provider: "google-antigravity", id: "gemini-3-1-pro-high", templateId: "gemini-3-pro-high" },
+  { provider: "google-antigravity", id: "gemini-3-1-pro-low", templateId: "gemini-3-pro-low" },
+];
+
+function applyAntigravityForwardCompatCatalogEntries(models: ModelCatalogEntry[]): void {
+  for (const rule of ANTIGRAVITY_FORWARD_COMPAT_CATALOG_RULES) {
+    const alreadyExists = models.some(
+      (e) =>
+        e.provider.toLowerCase() === rule.provider && e.id.toLowerCase() === rule.id.toLowerCase(),
+    );
+    if (alreadyExists) {
+      continue;
+    }
+
+    const template = models.find(
+      (e) =>
+        e.provider.toLowerCase() === rule.provider &&
+        e.id.toLowerCase() === rule.templateId.toLowerCase(),
+    );
+    if (!template) {
+      continue;
+    }
+
+    models.push({
+      ...template,
+      id: rule.id,
+      name: rule.id,
+    });
+  }
+}
+
 function applyOpenAICodexSparkFallback(models: ModelCatalogEntry[]): void {
   const hasSpark = models.some(
     (entry) =>
@@ -219,6 +279,7 @@ export async function loadModelCatalog(params?: {
       }
       mergeConfiguredOptInProviderModels({ config: cfg, models });
       applyOpenAICodexSparkFallback(models);
+      applyAntigravityForwardCompatCatalogEntries(models);
 
       if (models.length === 0) {
         // If we found nothing, don't cache this result so we can try again.

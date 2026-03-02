@@ -14,6 +14,23 @@ const ANTHROPIC_SONNET_46_MODEL_ID = "claude-sonnet-4-6";
 const ANTHROPIC_SONNET_46_DOT_MODEL_ID = "claude-sonnet-4.6";
 const ANTHROPIC_SONNET_TEMPLATE_MODEL_IDS = ["claude-sonnet-4-5", "claude-sonnet-4.5"] as const;
 
+// Antigravity (google-antigravity) provider — Claude 4.6 models
+const ANTIGRAVITY_OPUS_46_MODEL_ID = "claude-opus-4-6";
+const ANTIGRAVITY_OPUS_46_DOT_MODEL_ID = "claude-opus-4.6";
+const ANTIGRAVITY_OPUS_TEMPLATE_MODEL_IDS = ["claude-opus-4-5", "claude-opus-4.5"] as const;
+const ANTIGRAVITY_SONNET_46_MODEL_ID = "claude-sonnet-4-6";
+const ANTIGRAVITY_SONNET_46_DOT_MODEL_ID = "claude-sonnet-4.6";
+const ANTIGRAVITY_SONNET_TEMPLATE_MODEL_IDS = ["claude-sonnet-4-5", "claude-sonnet-4.5"] as const;
+
+// Antigravity (google-antigravity) provider — Gemini 3.1 Pro models
+// The API expects dot-notation (gemini-3.1-pro-high), not dash (gemini-3-1-pro-high).
+const ANTIGRAVITY_GEMINI_31_PRO_HIGH_PREFIX = "gemini-3.1-pro-high";
+const ANTIGRAVITY_GEMINI_31_PRO_LOW_PREFIX = "gemini-3.1-pro-low";
+const ANTIGRAVITY_GEMINI_31_PRO_DASH_HIGH_PREFIX = "gemini-3-1-pro-high";
+const ANTIGRAVITY_GEMINI_31_PRO_DASH_LOW_PREFIX = "gemini-3-1-pro-low";
+const ANTIGRAVITY_GEMINI_31_PRO_HIGH_TEMPLATE_IDS = ["gemini-3-pro-high"] as const;
+const ANTIGRAVITY_GEMINI_31_PRO_LOW_TEMPLATE_IDS = ["gemini-3-pro-low"] as const;
+
 const ZAI_GLM5_MODEL_ID = "glm-5";
 const ZAI_GLM5_TEMPLATE_MODEL_IDS = ["glm-4.7"] as const;
 
@@ -168,6 +185,124 @@ function resolveAnthropicSonnet46ForwardCompatModel(
   });
 }
 
+// The google-antigravity provider proxies Claude models through Google's Cloud Code Assist API.
+// The same 4.6 → 4.5 forward-compat logic that works for "anthropic" is needed here, but the
+// provider check must match "google-antigravity" and template lookups use that provider's registry.
+function resolveAntigravity46ForwardCompatModel(params: {
+  provider: string;
+  modelId: string;
+  modelRegistry: ModelRegistry;
+  dashModelId: string;
+  dotModelId: string;
+  dashTemplateId: string;
+  dotTemplateId: string;
+  fallbackTemplateIds: readonly string[];
+}): Model<Api> | undefined {
+  const { provider, modelId, modelRegistry, dashModelId, dotModelId } = params;
+  const normalizedProvider = normalizeProviderId(provider);
+  if (normalizedProvider !== "google-antigravity") {
+    return undefined;
+  }
+
+  const trimmedModelId = modelId.trim();
+  const lower = trimmedModelId.toLowerCase();
+  const is46Model =
+    lower === dashModelId ||
+    lower === dotModelId ||
+    lower.startsWith(`${dashModelId}-`) ||
+    lower.startsWith(`${dotModelId}-`);
+  if (!is46Model) {
+    return undefined;
+  }
+
+  const templateIds: string[] = [];
+  if (lower.startsWith(dashModelId)) {
+    templateIds.push(lower.replace(dashModelId, params.dashTemplateId));
+  }
+  if (lower.startsWith(dotModelId)) {
+    templateIds.push(lower.replace(dotModelId, params.dotTemplateId));
+  }
+  templateIds.push(...params.fallbackTemplateIds);
+
+  return cloneFirstTemplateModel({
+    normalizedProvider,
+    trimmedModelId,
+    templateIds,
+    modelRegistry,
+  });
+}
+
+function resolveAntigravityOpus46ForwardCompatModel(
+  provider: string,
+  modelId: string,
+  modelRegistry: ModelRegistry,
+): Model<Api> | undefined {
+  return resolveAntigravity46ForwardCompatModel({
+    provider,
+    modelId,
+    modelRegistry,
+    dashModelId: ANTIGRAVITY_OPUS_46_MODEL_ID,
+    dotModelId: ANTIGRAVITY_OPUS_46_DOT_MODEL_ID,
+    dashTemplateId: "claude-opus-4-5",
+    dotTemplateId: "claude-opus-4.5",
+    fallbackTemplateIds: ANTIGRAVITY_OPUS_TEMPLATE_MODEL_IDS,
+  });
+}
+
+function resolveAntigravitySonnet46ForwardCompatModel(
+  provider: string,
+  modelId: string,
+  modelRegistry: ModelRegistry,
+): Model<Api> | undefined {
+  return resolveAntigravity46ForwardCompatModel({
+    provider,
+    modelId,
+    modelRegistry,
+    dashModelId: ANTIGRAVITY_SONNET_46_MODEL_ID,
+    dotModelId: ANTIGRAVITY_SONNET_46_DOT_MODEL_ID,
+    dashTemplateId: "claude-sonnet-4-5",
+    dotTemplateId: "claude-sonnet-4.5",
+    fallbackTemplateIds: ANTIGRAVITY_SONNET_TEMPLATE_MODEL_IDS,
+  });
+}
+
+// Antigravity's Cloud Code Assist API recognizes gemini-3.1-pro-high and gemini-3.1-pro-low
+// (dot notation). Clone from the gemini-3-pro-high/low templates in the google-antigravity registry.
+function resolveAntigravityGemini31ForwardCompatModel(
+  provider: string,
+  modelId: string,
+  modelRegistry: ModelRegistry,
+): Model<Api> | undefined {
+  if (normalizeProviderId(provider) !== "google-antigravity") {
+    return undefined;
+  }
+  const trimmed = modelId.trim();
+  const lower = trimmed.toLowerCase();
+
+  let templateIds: readonly string[];
+  if (
+    lower.startsWith(ANTIGRAVITY_GEMINI_31_PRO_HIGH_PREFIX) ||
+    lower.startsWith(ANTIGRAVITY_GEMINI_31_PRO_DASH_HIGH_PREFIX)
+  ) {
+    templateIds = ANTIGRAVITY_GEMINI_31_PRO_HIGH_TEMPLATE_IDS;
+  } else if (
+    lower.startsWith(ANTIGRAVITY_GEMINI_31_PRO_LOW_PREFIX) ||
+    lower.startsWith(ANTIGRAVITY_GEMINI_31_PRO_DASH_LOW_PREFIX)
+  ) {
+    templateIds = ANTIGRAVITY_GEMINI_31_PRO_LOW_TEMPLATE_IDS;
+  } else {
+    return undefined;
+  }
+
+  return cloneFirstTemplateModel({
+    normalizedProvider: "google-antigravity",
+    trimmedModelId: trimmed,
+    templateIds: [...templateIds],
+    modelRegistry,
+    patch: { reasoning: true },
+  });
+}
+
 // gemini-3.1-pro-preview / gemini-3.1-flash-preview are not present in pi-ai's built-in
 // google-gemini-cli catalog yet. Clone the nearest gemini-3 template so users don't get
 // "Unknown model" errors when Google Gemini CLI gains new minor-version models.
@@ -251,6 +386,9 @@ export function resolveForwardCompatModel(
     resolveOpenAICodexGpt53FallbackModel(provider, modelId, modelRegistry) ??
     resolveAnthropicOpus46ForwardCompatModel(provider, modelId, modelRegistry) ??
     resolveAnthropicSonnet46ForwardCompatModel(provider, modelId, modelRegistry) ??
+    resolveAntigravityOpus46ForwardCompatModel(provider, modelId, modelRegistry) ??
+    resolveAntigravitySonnet46ForwardCompatModel(provider, modelId, modelRegistry) ??
+    resolveAntigravityGemini31ForwardCompatModel(provider, modelId, modelRegistry) ??
     resolveZaiGlm5ForwardCompatModel(provider, modelId, modelRegistry) ??
     resolveGoogleGeminiCli31ForwardCompatModel(provider, modelId, modelRegistry)
   );
